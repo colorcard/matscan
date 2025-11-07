@@ -10,7 +10,7 @@ use crate::{
 
 pub async fn get_ranges(database: &Database) -> eyre::Result<Vec<ScanRange>> {
     let known_servers = database
-        .collect_all_servers(CollectServersFilter::Active365d)
+        .collect_all_servers(CollectServersFilter::Active30d)
         .await?;
 
     let ranges = to_subnet_16_ranges(&known_servers);

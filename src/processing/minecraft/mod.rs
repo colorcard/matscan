@@ -15,7 +15,7 @@ use serde::Deserialize;
 use sha2::Digest;
 use simd_json::derived::{ValueObjectAccess, ValueObjectAccessAsArray, ValueObjectAccessAsScalar};
 use sqlx::{Arguments, Postgres, QueryBuilder, postgres::PgArguments};
-use tracing::error;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 use super::{ProcessableProtocol, SharedData};
@@ -100,19 +100,6 @@ impl ProcessableProtocol for protocols::Minecraft {
         if config.snipe.enabled {
             maybe_log_sniped(&shared, &config, target, &db, &ping_res);
         }
-
-        // if let Some(cleaned_data) = clean_response_data(&data, passive_fingerprint) {
-        //     let mongo_update = doc! { "$set": cleaned_data };
-        //     match create_query(database, &target, mongo_update) {
-        //         Ok(r) => Some(r),
-        //         Err(err) => {
-        //             error!("Error updating server {target}: {err}");
-        //             None
-        //         }
-        //     }
-        // } else {
-        //     None
-        // }
 
         insert_server_to_db(&db, &target, &ping_res).await
     }
@@ -269,10 +256,10 @@ pub async fn insert_server_to_db(
     {
         let mut shared = db.shared.lock();
         let ips_with_same_hash = shared.ip_to_hash_and_ports.get_mut(target.ip());
-        if let Some((data, previously_checked_ports)) = ips_with_same_hash
-            && !previously_checked_ports.contains(&target.port())
-        {
-            if let Some(count) = &mut data.count {
+        if let Some((data, previously_checked_ports)) = ips_with_same_hash {
+            if !previously_checked_ports.contains(&target.port())
+                && let Some(count) = &mut data.count
+            {
                 let this_server_hash = make_ping_response_hash(r)?;
 
                 if this_server_hash == data.hash {
@@ -280,8 +267,8 @@ pub async fn insert_server_to_db(
                     previously_checked_ports.insert(target.port());
 
                     if *count >= 100 {
-                        // too many servers with the same hash... add to bad ips!
-                        println!("found a new bad ip: {} :(", target.ip());
+                        // too many servers with the same hash so add to aliased servers
+                        warn!("found a new aliased server: {} :(", target.ip());
                         // we call add_to_ips_with_aliased_servers later
                         is_aliased_server = true;
                     }
@@ -317,8 +304,6 @@ pub async fn insert_server_to_db(
         bail!("Aliased server: {target:?}");
     }
 
-    let mut txn = db.pool.begin().await?;
-
     if r.favicon.is_some() {
         sqlx::query(
             r#"
@@ -329,7 +314,7 @@ pub async fn insert_server_to_db(
         )
         .bind(r.favicon_hash)
         .bind(r.favicon.clone())
-        .execute(&mut *txn)
+        .execute(&db.pool)
         .await?;
     }
 
@@ -375,7 +360,7 @@ pub async fn insert_server_to_db(
 
     let mut qb = qb.into_querybuilder();
     let query = qb.build();
-    query.execute(&mut *txn).await?;
+    query.execute(&db.pool).await?;
 
     // insert players in bulk
     if !r.player_sample.is_empty() {
@@ -396,10 +381,9 @@ pub async fn insert_server_to_db(
         });
         query_builder.push("ON CONFLICT (server_ip, server_port, uuid) DO UPDATE SET last_seen = EXCLUDED.last_seen, username = EXCLUDED.username");
         let query = query_builder.build();
-        query.execute(&mut *txn).await?;
+        query.execute(&db.pool).await?;
     }
 
-    txn.commit().await?;
     Ok(())
 }
 

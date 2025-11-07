@@ -17,7 +17,9 @@ mod slash16_b;
 mod slash24_a;
 mod slash24_b;
 mod slash24_c;
-mod slash32;
+mod slash32_a;
+mod slash32_b;
+mod slash32_c;
 
 #[derive(
     Clone, Copy, Debug, Eq, PartialEq, Hash, enum_utils::FromStr, enum_utils::IterVariants,
@@ -29,7 +31,9 @@ pub enum ScanStrategy {
     Slash24a,
     Slash24b,
     Slash24c,
-    Slash32,
+    Slash32a,
+    Slash32b,
+    Slash32c,
 
     Rescan1day,
     Rescan7days,
@@ -56,7 +60,7 @@ impl Default for StrategyPicker {
         }
 
         // read strategies.json
-        let mut modes = std::fs::read_to_string("strategies.json")
+        let mut strategies = fs::read_to_string("strategies.json")
             .unwrap_or_default()
             .parse::<serde_json::Value>()
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
@@ -76,10 +80,10 @@ impl Default for StrategyPicker {
             .collect::<HashMap<_, _>>();
 
         for mode in ScanStrategy::iter() {
-            modes.entry(mode).or_insert(DEFAULT_FOUND);
+            strategies.entry(mode).or_insert(DEFAULT_FOUND);
         }
 
-        Self { strategies: modes }
+        Self { strategies }
     }
 }
 
@@ -116,8 +120,8 @@ impl StrategyPicker {
             modes_vec
         };
 
-        // 1% chance to pick a random strategy
-        if rand::random::<f64>() < 0.01 {
+        // 10% chance to pick a random strategy
+        if rand::random::<f64>() < 0.10 {
             return modes_vec
                 .iter()
                 .map(|(mode, _)| *mode)
@@ -142,15 +146,21 @@ impl StrategyPicker {
 
         // write strategies.json
         let mut modes = serde_json::Map::new();
-        for (mode, count) in self.strategies.iter() {
+
+        // sort by name so the json file looks nicer
+        let mut strategies_sorted = self.strategies.clone().into_iter().collect::<Vec<_>>();
+        strategies_sorted.sort_by_key(|(s, _)| format!("{s:?}"));
+
+        for (strategy, count) in strategies_sorted {
             modes.insert(
-                format!("{mode:?}"),
-                serde_json::Value::Number((*count).into()),
+                format!("{strategy:?}"),
+                serde_json::Value::Number(count.into()),
             );
         }
 
         if let Err(err) = fs::write(
             "strategies.json",
+            // convert to btreemap to make it ordered
             serde_json::to_string_pretty(&modes).unwrap(),
         ) {
             eprintln!("failed to write strategies.json: {err}");
@@ -182,7 +192,9 @@ impl ScanStrategy {
             ScanStrategy::Slash24a => slash24_a::get_ranges(database).await,
             ScanStrategy::Slash24b => slash24_b::get_ranges(database).await,
             ScanStrategy::Slash24c => slash24_c::get_ranges(database).await,
-            ScanStrategy::Slash32 => slash32::get_ranges(database).await,
+            ScanStrategy::Slash32a => slash32_a::get_ranges(database).await,
+            ScanStrategy::Slash32b => slash32_b::get_ranges(database).await,
+            ScanStrategy::Slash32c => slash32_c::get_ranges(database).await,
 
             ScanStrategy::Rescan1day => {
                 rescan::get_ranges(

@@ -4,15 +4,15 @@ pub mod minecraft_fingerprinting;
 use std::{
     collections::{HashMap, VecDeque},
     mem,
-    net::SocketAddrV4,
+    net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
     time::Duration,
 };
 
 use chrono::{NaiveDateTime, TimeDelta, Utc};
 use parking_lot::Mutex;
-use rustc_hash::FxHashSet;
-use sqlx::Row;
+use rustc_hash::{FxHashMap, FxHashSet};
+use sqlx::{QueryBuilder, Row};
 use tokio::time::sleep;
 
 use crate::{
@@ -131,19 +131,30 @@ async fn handle_response_futures(
 
     let mut tasks = Vec::with_capacity(futures.len());
     let now = Utc::now();
-    for (addr, handle_response_future) in futures {
-        tasks.push(async move {
-            let mut processed_server_status = if let Ok(row) =
-                sqlx::query("SELECT last_pinged FROM servers WHERE ip = $1 AND port = $2")
-                    .bind(PgU32(addr.ip().to_bits()))
-                    .bind(PgU16(addr.port()))
-                    .fetch_one(&db.pool)
-                    .await
-            {
+
+    let servers = futures.iter().map(|(addr, _)| *addr).collect::<Vec<_>>();
+
+    for (addr, process_fut) in futures {
+        tasks.push(async move { (addr, process_fut.await) });
+    }
+
+    let last_pinged_map = fetch_last_pinged_for_servers(db, &servers).await?;
+
+    let process_results = futures_util::future::join_all(tasks).await;
+
+    let mut updated_count = 0;
+    let mut updated_but_not_revived_count = 0;
+    let mut inserted_count = 0;
+    let mut inserted_on_default_port_count = 0;
+    let mut revived_count = 0;
+    for (addr, process_res) in process_results {
+        let processed_server_status = if process_res.is_err() {
+            ProcessedServerStatus::Error
+        } else {
+            let last_pinged = last_pinged_map.get(&addr).copied();
+            if let Some(last_pinged) = last_pinged {
                 // if the last_pinged was more than 2 hours ago, then we consider the server to
                 // be Revived instead of Updated
-
-                let last_pinged = row.get::<NaiveDateTime, _>(0);
                 if now.naive_utc() - last_pinged > TimeDelta::hours(2) {
                     ProcessedServerStatus::Revived
                 } else {
@@ -151,25 +162,10 @@ async fn handle_response_futures(
                 }
             } else {
                 ProcessedServerStatus::Added
-            };
-
-            if handle_response_future.await.is_err() {
-                processed_server_status = ProcessedServerStatus::Error;
             }
+        };
 
-            (addr, processed_server_status)
-        });
-    }
-
-    let resolved_statuses = futures_util::future::join_all(tasks).await;
-
-    let mut updated_count = 0;
-    let mut updated_but_not_revived_count = 0;
-    let mut inserted_count = 0;
-    let mut inserted_on_default_port_count = 0;
-    let mut revived_count = 0;
-    for (addr, resolved_status) in resolved_statuses {
-        match resolved_status {
+        match processed_server_status {
             ProcessedServerStatus::Added => {
                 updated_count += 1;
                 inserted_count += 1;
@@ -220,4 +216,32 @@ async fn handle_response_futures(
     }
 
     Ok(())
+}
+
+async fn fetch_last_pinged_for_servers(
+    db: &Database,
+    servers: &[SocketAddrV4],
+) -> eyre::Result<FxHashMap<SocketAddrV4, NaiveDateTime>> {
+    // fetch the last_pinged for all servers in this chunk in one big query
+    let mut last_pinged_qb = QueryBuilder::new("SELECT ip, port, last_pinged FROM servers WHERE (");
+    for (i, addr) in servers.iter().enumerate() {
+        if i > 0 {
+            last_pinged_qb.push(") OR (");
+        }
+        last_pinged_qb.push("ip = ");
+        last_pinged_qb.push_bind(PgU32(addr.ip().to_bits()));
+        last_pinged_qb.push(" AND port = ");
+        last_pinged_qb.push_bind(PgU16(addr.port()));
+    }
+    last_pinged_qb.push(")");
+    let last_pinged_rows = last_pinged_qb.build().fetch_all(&db.pool).await?;
+    let mut last_pinged_map = FxHashMap::<SocketAddrV4, NaiveDateTime>::default();
+    for row in last_pinged_rows {
+        let ip = Ipv4Addr::from_bits(row.get::<PgU32, _>(0).0);
+        let port = row.get::<PgU16, _>(1).0;
+        let last_pinged = row.get::<NaiveDateTime, _>(2);
+        last_pinged_map.insert(SocketAddrV4::new(ip, port), last_pinged);
+    }
+
+    Ok(last_pinged_map)
 }

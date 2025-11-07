@@ -6,7 +6,7 @@ use std::{
     borrow::BorrowMut,
     collections::{HashMap, HashSet, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
-    net::SocketAddrV4,
+    net::{Ipv4Addr, SocketAddrV4},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -109,9 +109,18 @@ impl ScannerReceiver {
                     continue;
                 }
 
+                // 5.62.107.102:10060
+                let mut should_log = false;
+                if address == SocketAddrV4::new(Ipv4Addr::new(5, 62, 107, 102), 10060) {
+                    should_log = true;
+                }
+
                 if tcp.flags & TcpFlags::RST != 0 {
                     // RST
-                    trace!("RST :( {}", address);
+                    trace!("RST :( {address}");
+                    if should_log {
+                        println!("RST :( {address}");
+                    }
 
                     if self.scanner.conns.contains_key(&address) {
                         // the rst might have significance for this protocol
@@ -145,24 +154,55 @@ impl ScannerReceiver {
                             );
                         }
 
-                        if conn.data.is_empty() {
-                            trace!("FIN with no data :( {}:{}", ipv4.source, tcp.source);
-                            // if there was no data then parse that as a response
-                            if let Ok(data) = protocol.parse_response(Response::Data(vec![])) {
+                        let actual_seq = tcp.sequence;
+                        let expected_seq = conn.remote_seq;
+                        if actual_seq != conn.remote_seq {
+                            let difference = (actual_seq as i64).wrapping_sub(expected_seq as i64);
+                            trace!(
+                                "Got wrong seq number {actual_seq} for FIN! expected {expected_seq} (difference = {difference}). This is probably because of a re-transmission.",
+                            );
+                            if should_log {
+                                println!(
+                                    "Got wrong seq number {actual_seq} for FIN! expected {expected_seq} (difference = {difference}). This is probably because of a re-transmission.",
+                                );
+                            }
+                            continue;
+                        }
+                        // this means it's adding more data to this connection
+                        conn.data.extend(tcp.payload.clone());
+                        conn.remote_seq = actual_seq + tcp.payload.len() as u32;
+                        let conn = self.scanner.conns.borrow_mut().remove(&address).expect(
+                            "the connection should still be here since we just checked that it is",
+                        );
+
+                        match protocol.parse_response(Response::Data(conn.data.clone())) {
+                            Ok(data) => {
+                                let data_string = String::from_utf8_lossy(&data);
+                                trace!("\n\nfin {address} {data_string}");
+                                if should_log {
+                                    println!("\n\nfin {address} {data_string}");
+                                }
+
                                 self.shared_process_data
                                     .lock()
                                     .queue
                                     .push_back((address, data));
                             }
-                        } else {
-                            trace!("FIN {}:{}", ipv4.source, tcp.source);
-                            self.scanner.conns.borrow_mut().remove(&address);
+                            Err(e) => {
+                                trace!("packet error on fin, ignoring: {e:?}");
+                            }
                         }
                     } else {
                         trace!(
                             "FIN with no connection, probably already forgotten by us {}:{}",
                             ipv4.source, tcp.source
                         );
+                        if should_log {
+                            println!(
+                                "FIN with no connection, probably already forgotten by us {}:{}",
+                                ipv4.source, tcp.source
+                            );
+                        }
                         self.scanner.client.write.send_ack(
                             address,
                             tcp.destination,
@@ -174,6 +214,9 @@ impl ScannerReceiver {
                     continue;
                 } else if tcp.flags & TcpFlags::SYN != 0 && tcp.flags & TcpFlags::ACK != 0 {
                     trace!("SYN+ACK {}:{}", ipv4.source, tcp.source);
+                    if should_log {
+                        println!("SYN+ACK {}:{}", ipv4.source, tcp.source);
+                    }
 
                     received_from_ips.insert(address);
 
@@ -187,11 +230,16 @@ impl ScannerReceiver {
                         trace!(
                             "cookie mismatch for {address} (expected {expected_ack}, got {ack_number})"
                         );
+                        if should_log {
+                            println!(
+                                "cookie mismatch for {address} (expected {expected_ack}, got {ack_number})"
+                            );
+                        }
                         continue;
                     }
 
-                    // this is optional, real tcp clients usually do send it but it doesn't appear
-                    // to be necessary. it also causes problems if this packet gets sent and the
+                    // this is optional, real tcp clients usually do send it but it's technically
+                    // not necessary. it also causes problems if this packet gets sent and the
                     // next one is dropped.
                     // self.scanner.client.write.send_ack(
                     //     address,
@@ -229,6 +277,12 @@ impl ScannerReceiver {
                         "ACK {address} with data: {}",
                         String::from_utf8_lossy(&tcp.payload)
                     );
+                    if should_log {
+                        println!(
+                            "ACK {address} with data: {}",
+                            String::from_utf8_lossy(&tcp.payload)
+                        );
+                    }
                     // println!("ACK {}:{}", ipv4.source, tcp.source);
 
                     // cookie +packet size + 1
@@ -250,6 +304,11 @@ impl ScannerReceiver {
                             trace!(
                                 "Got wrong seq number {actual_seq}! expected {expected_seq} (difference = {difference}). This is probably because of a re-transmission.",
                             );
+                            if should_log {
+                                println!(
+                                    "Got wrong seq number {actual_seq}! expected {expected_seq} (difference = {difference}). This is probably because of a re-transmission.",
+                                );
+                            }
 
                             if conn.fin_sent {
                                 // our FIN might've been dropped
@@ -260,12 +319,12 @@ impl ScannerReceiver {
                                     expected_seq,
                                 );
                             } else {
-                                self.scanner.client.write.send_ack(
-                                    address,
-                                    tcp.destination,
-                                    actual_ack,
-                                    expected_seq,
-                                );
+                                // self.scanner.client.write.send_ack(
+                                //     address,
+                                //     tcp.destination,
+                                //     actual_ack,
+                                //     expected_seq,
+                                // );
                             }
 
                             continue;
@@ -290,6 +349,11 @@ impl ScannerReceiver {
                             trace!(
                                 "cookie mismatch when reading data for {address} (expected {expected_ack}, got {actual_ack}, initial was {original_cookie})"
                             );
+                            if should_log {
+                                println!(
+                                    "cookie mismatch when reading data for {address} (expected {expected_ack}, got {actual_ack}, initial was {original_cookie})"
+                                );
+                            }
                             continue;
                         }
 
@@ -302,6 +366,9 @@ impl ScannerReceiver {
                         Ok(data) => {
                             let data_string = String::from_utf8_lossy(&data);
                             trace!("\n\n{address} {data_string}");
+                            if should_log {
+                                println!("\n\n{address} {data_string}");
+                            }
 
                             if !is_tracked {
                                 self.scanner.conns.borrow_mut().insert(
@@ -322,6 +389,12 @@ impl ScannerReceiver {
                                     "connection #{connections_started} started and ended immediately (with {}:{})",
                                     ipv4.source, tcp.source
                                 );
+                                if should_log {
+                                    println!(
+                                        "connection #{connections_started} started and ended immediately (with {}:{})",
+                                        ipv4.source, tcp.source
+                                    );
+                                }
                             }
 
                             let conn = self.scanner.conns.get(&address).unwrap();
@@ -369,6 +442,12 @@ impl ScannerReceiver {
                                             "connection #{connections_started} started (with {}:{})",
                                             ipv4.source, tcp.source
                                         );
+                                        if should_log {
+                                            println!(
+                                                "connection #{connections_started} started (with {}:{})",
+                                                ipv4.source, tcp.source
+                                            );
+                                        }
                                     }
 
                                     let conn = self.scanner.conns.get(&address).unwrap();
@@ -381,6 +460,9 @@ impl ScannerReceiver {
                                         actual_ack,
                                         conn.remote_seq,
                                     );
+                                    if should_log {
+                                        println!("sending ack to {}:{}", ipv4.source, tcp.source);
+                                    }
                                 }
                             };
                         }

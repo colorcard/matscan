@@ -402,7 +402,7 @@ fn process_results(
         // prioritize finding servers on the default port since they're more likely to
         // last longer
         const TOTAL_NEW_MULTIPLIER: f64 = 1.0;
-        const TOTAL_NEW_ON_DEFAULT_PORT_MULTIPLIER: f64 = 50.0;
+        const TOTAL_NEW_ON_DEFAULT_PORT_MULTIPLIER: f64 = 5.0;
         const REVIVED_MULTIPLIER: f64 = 0.1;
 
         let total_new_score = total_new as f64 * TOTAL_NEW_MULTIPLIER;

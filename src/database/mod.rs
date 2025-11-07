@@ -78,9 +78,12 @@ impl Database {
             loop {
                 if let Err(e) = db_clone.delete_spam_historical_players().await {
                     error!("got error from delete_spam_historical_players: {e}");
+                    // every 4 hours
                 }
-                // every 4 hours
                 tokio::time::sleep(Duration::from_secs(60 * 60 * 4)).await;
+                if let Err(e) = db_clone.update_ips_with_aliased_servers().await {
+                    error!("got error from update_ips_with_aliased_servers: {e}");
+                }
             }
         });
 

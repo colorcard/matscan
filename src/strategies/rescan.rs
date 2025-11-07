@@ -94,9 +94,10 @@ pub async fn get_ranges(database: &Database, opts: &RescanConfig) -> eyre::Resul
             // if padding is enabled, scan some extra addresses that aren't specifically
             // known to have minecraft servers so we're not flooded with responses
             let [a, b, c, _] = ip.octets();
+            let c = c & 0b1111_0000;
             ranges.insert(ScanRange {
                 ip_start: Ipv4Addr::from([a, b, c, 0]),
-                ip_end: Ipv4Addr::from([a, b, c, 255]),
+                ip_end: Ipv4Addr::from([a, b, c | 0b1111, 255]),
                 port_start: port,
                 port_end: port,
             });

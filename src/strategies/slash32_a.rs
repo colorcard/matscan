@@ -1,16 +1,16 @@
-use std::{collections::HashSet, net::Ipv4Addr};
+use std::collections::HashSet;
 
 use tracing::info;
 
 use crate::{
     database::{Database, collect_servers::CollectServersFilter},
     scanner::targets::ScanRange,
+    strategies::slash16_a,
 };
 
-/// Scan every port on every address with at least one server.
 pub async fn get_ranges(database: &Database) -> eyre::Result<Vec<ScanRange>> {
     let known_servers = database
-        .collect_all_servers(CollectServersFilter::Active365d)
+        .collect_all_servers(CollectServersFilter::Active30d)
         .await?;
 
     let known_ips = known_servers
@@ -21,13 +21,6 @@ pub async fn get_ranges(database: &Database) -> eyre::Result<Vec<ScanRange>> {
 
     let mut target_ranges = Vec::new();
 
-    // also scan /0 at the same time to avoid overwhelming our targets
-    target_ranges.push(ScanRange::single_port(
-        Ipv4Addr::new(0, 0, 0, 0),
-        Ipv4Addr::new(255, 255, 255, 255),
-        25565,
-    ));
-
     for &address in known_ips {
         target_ranges.push(ScanRange {
             ip_start: address,
@@ -36,6 +29,9 @@ pub async fn get_ranges(database: &Database) -> eyre::Result<Vec<ScanRange>> {
             port_end: 65535,
         });
     }
+
+    // also scan slash16_a at the same time to avoid overwhelming our targets
+    target_ranges.extend(slash16_a::get_ranges(database).await?);
 
     Ok(target_ranges)
 }

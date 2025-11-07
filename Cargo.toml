@@ -10,21 +10,21 @@ azalea-chat = { git = "https://github.com/azalea-rs/azalea", default-features = 
 bson = "3.0.0"
 default-net = "0.22.0"
 dotenv = "0.15.0"
-libc = "0.2.175"
+libc = "0.2.176"
 perfect_rand = "0.3.0"
 pnet = "0.35.0"
 pnet_macros = "0.35.0"
 pnet_macros_support = "0.35.0"
 rand = "0.9.2"
-regex = "1.11.2"
-serde = "1.0.219"
-serde_json = "1.0.143"
+regex = "1.11.3"
+serde = "1.0.226"
+serde_json = "1.0.145"
 tokio = { version = "1.47.1", features = ["rt"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 futures-util = "0.3.31"
 lru-cache = "0.1.2"
-toml = "0.9.5"
+toml = "0.9.7"
 reqwest = { version = "0.12.23", default-features = false, features = [
     "json",
     "rustls-tls",
@@ -38,8 +38,8 @@ rustc-hash = "2.1.1"
 mongodb = "3.3.0"
 eyre = "0.6.12"
 uuid = "1.18.1"
-chrono = "0.4.41"
-simd-json = "0.15.1"
+chrono = "0.4.42"
+simd-json = "0.16.0"
 sha2 = "0.10.9"
 
 [dev-dependencies]
