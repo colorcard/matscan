@@ -75,11 +75,7 @@ async fn main() -> eyre::Result<()> {
         exclude_ranges.ranges().len()
     );
 
-    let minecraft_protocol = protocols::Minecraft::new(
-        &config.target.addr,
-        config.target.port,
-        config.target.protocol_version,
-    );
+    let minecraft_protocol = protocols::Minecraft::new(config.target.protocol_version);
 
     let database = Database::connect(&config.postgres_uri).await?;
     let scanner = Scanner::new(&config);

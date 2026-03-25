@@ -11,7 +11,7 @@ pub struct Minecraft {
 }
 
 impl Minecraft {
-    pub fn new(_hostname: &str, _port: u16, protocol_version: i32) -> Self {
+    pub fn new(protocol_version: i32) -> Self {
         Self { protocol_version }
     }
 }

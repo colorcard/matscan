@@ -499,7 +499,11 @@ mod tests {
 
     #[test]
     fn test_chinese_extra_description() {
-        let json = r#"{"description":{"text":"","extra":[{"text":"欢迎","color":"yellow"},{"text":"服务器","color":"red"}]},"players":{"max":100,"online":5},"version":{"name":"1.8.9","protocol":47}}"#;
+        let json = concat!(
+            r#"{"description":{"text":"","extra":[{"text":"欢迎","color":"yellow"},"#,
+            r#"{"text":"服务器","color":"red"}]},"#,
+            r#""players":{"max":100,"online":5},"version":{"name":"1.8.9","protocol":47}}"#,
+        );
         let result = parse_ping_response_json(json.as_bytes()).unwrap();
         assert_eq!(result.description_plaintext, "欢迎服务器");
     }
