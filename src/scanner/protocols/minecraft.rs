@@ -7,19 +7,22 @@ use super::{ParseResponseError, Protocol, Response};
 
 #[derive(Clone)]
 pub struct Minecraft {
-    minecraft_request: Vec<u8>,
+    protocol_version: i32,
 }
 
 impl Minecraft {
-    pub fn new(hostname: &str, port: u16, protocol_version: i32) -> Self {
-        let minecraft_request = build_latest_request(hostname, port, protocol_version);
-        Self { minecraft_request }
+    pub fn new(_hostname: &str, _port: u16, protocol_version: i32) -> Self {
+        Self { protocol_version }
     }
 }
 
 impl Protocol for Minecraft {
-    fn payload(&self, _address: SocketAddrV4) -> Vec<u8> {
-        self.minecraft_request.clone()
+    fn payload(&self, address: SocketAddrV4) -> Vec<u8> {
+        build_latest_request(
+            &address.ip().to_string(),
+            address.port(),
+            self.protocol_version,
+        )
     }
 
     fn parse_response(&self, response: Response) -> Result<Vec<u8>, ParseResponseError> {
@@ -38,12 +41,14 @@ impl Protocol for Minecraft {
         }
         // read until end
         let position = stream.position() as usize;
-        let status_buffer = &stream.into_inner()[position..];
+        let full_buffer = stream.into_inner();
+        let status_buffer = &full_buffer[position..];
         if status_buffer.len() < response_length as usize {
             return Err(ParseResponseError::Incomplete {
                 expected_length: response_length as u32,
             });
         }
+        let status_buffer = &status_buffer[..response_length as usize];
 
         let status_string = String::from_utf8_lossy(status_buffer).to_string();
 
@@ -83,11 +88,6 @@ pub fn build_latest_request(hostname: &str, port: u16, protocol_version: i32) ->
         1,    // length of 2nd packet id + data as VarInt
         0x00, // 2nd packet id: 0 for request as VarInt
     ]);
-
-    eprintln!("full_buffer: {full_buffer:?}");
-
-    // let mut f = std::fs::File::create("request.bin").unwrap();
-    // f.write_all(&full_buffer).unwrap();
 
     full_buffer
 }
