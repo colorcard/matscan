@@ -4,7 +4,7 @@ pub mod throttle;
 
 use std::{
     borrow::BorrowMut,
-    collections::{HashMap, HashSet, hash_map::DefaultHasher},
+    collections::{HashMap, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
     net::{Ipv4Addr, SocketAddrV4},
     sync::{
@@ -88,7 +88,6 @@ pub struct ScannerReceiver {
 
 impl ScannerReceiver {
     pub fn recv_loop(&mut self, ping_timeout: Duration) {
-        let mut received_from_ips = HashSet::<SocketAddrV4>::new();
         let mut syn_acks_received: usize = 0;
         let mut connections_started: usize = 0;
 
@@ -217,8 +216,6 @@ impl ScannerReceiver {
                     if should_log {
                         println!("SYN+ACK {}:{}", ipv4.source, tcp.source);
                     }
-
-                    received_from_ips.insert(address);
 
                     // SYN+ACK
                     // verify that the ack is the cookie+1
