@@ -471,3 +471,36 @@ fn make_favicon_hash(favicon: &str) -> [u8; 16] {
     hash.copy_from_slice(&result[..16]);
     hash
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chinese_plain_string_description() {
+        let json = r#"{"description":"欢迎来到服务器","players":{"max":100,"online":5},"version":{"name":"1.8.9","protocol":47}}"#;
+        let result = parse_ping_response_json(json.as_bytes()).unwrap();
+        assert_eq!(result.description_plaintext, "欢迎来到服务器");
+    }
+
+    #[test]
+    fn test_chinese_legacy_color_codes() {
+        let json = r#"{"description":"§a欢迎来到§b服务器","players":{"max":100,"online":5},"version":{"name":"1.8.9","protocol":47}}"#;
+        let result = parse_ping_response_json(json.as_bytes()).unwrap();
+        assert_eq!(result.description_plaintext, "欢迎来到服务器");
+    }
+
+    #[test]
+    fn test_chinese_object_description() {
+        let json = r#"{"description":{"text":"欢迎来到服务器"},"players":{"max":100,"online":5},"version":{"name":"1.8.9","protocol":47}}"#;
+        let result = parse_ping_response_json(json.as_bytes()).unwrap();
+        assert_eq!(result.description_plaintext, "欢迎来到服务器");
+    }
+
+    #[test]
+    fn test_chinese_extra_description() {
+        let json = r#"{"description":{"text":"","extra":[{"text":"欢迎","color":"yellow"},{"text":"服务器","color":"red"}]},"players":{"max":100,"online":5},"version":{"name":"1.8.9","protocol":47}}"#;
+        let result = parse_ping_response_json(json.as_bytes()).unwrap();
+        assert_eq!(result.description_plaintext, "欢迎服务器");
+    }
+}
