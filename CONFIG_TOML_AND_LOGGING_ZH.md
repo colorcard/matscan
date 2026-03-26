@@ -10,7 +10,7 @@
 
 ## 1. 配置文件加载与解析机制
 
-## 1.1 加载入口
+### 1.1 加载入口
 
 程序启动后会读取命令行第一个参数作为配置路径；未传时默认使用 `config.toml`：
 
@@ -22,7 +22,7 @@
 - 路径错误、权限问题、TOML 语法错误都会在启动阶段直接报错退出
 - 配置是一次性读取，不会热更新
 
-## 1.2 字段严格校验（非常重要）
+### 1.2 字段严格校验（非常重要）
 
 `Config` 及其子结构体基本都带了 `#[serde(deny_unknown_fields)]`（`src/config.rs`）。
 
@@ -39,19 +39,19 @@
 
 以下字段位于 TOML 顶层。
 
-## 2.1 `postgres_uri`（必填）
+### 2.1 `postgres_uri`（必填）
 
 - 类型：`String`
 - 作用：PostgreSQL 连接串，程序启动后用于 `Database::connect`
 - 示例：`postgres://matscan:password@localhost/matscan`
 
-## 2.2 `rate`（必填）
+### 2.2 `rate`（必填）
 
 - 类型：`u64`
 - 含义：发包速率上限（packets per second）
 - 影响：扫描发送线程中节流器会按该值控制 SYN 发送速率
 
-## 2.3 `sleep_secs`（可选，默认 10）
+### 2.3 `sleep_secs`（可选，默认 10）
 
 - 类型：`Option<u64>`
 - 默认：未设置时按 `10` 秒
@@ -61,7 +61,7 @@
   - 然后用 `sleep_secs - processing_time` 计算还需补多少等待时间
   - 目的是减少“慢响应”串到下一轮策略的概率（避免归因错位）
 
-## 2.4 `source_port`（可选，默认 `61000`）
+### 2.4 `source_port`（可选，默认 `61000`）
 
 - 类型：`SourcePort`
 - 支持两种 TOML 形态：
@@ -75,26 +75,26 @@
 - 代码里端口选择基于种子做取模（`src/scanner/mod.rs`）
 - 实际挑选范围是 `[min, max)`（上界不参与随机挑选）
 
-## 2.5 `scan_duration_secs`（可选，默认 300）
+### 2.5 `scan_duration_secs`（可选，默认 300）
 
 - 类型：`Option<u64>`
 - 默认：`5 分钟`
 - 含义：单轮扫描最长期限
 - 发送线程达到目标包数或超时后结束
 
-## 2.6 `ping_timeout_secs`（可选，默认 60）
+### 2.6 `ping_timeout_secs`（可选，默认 60）
 
 - 类型：`Option<u64>`
 - 默认：`60 秒`
 - 含义：接收侧连接状态保留时长；超过后会清理旧连接
 
-## 2.7 `logging_dir`（可选）
+### 2.7 `logging_dir`（可选）
 
 - 类型：`Option<PathBuf>`
 - 含义：设置后启用文件日志（按天滚动），目录下写入 `matscan.log`
 - 不设置时：不会创建 tracing 文件日志层
 
-## 2.8 `target`（必填小节）
+### 2.8 `target`（必填小节）
 
 ```toml
 [target]
@@ -107,7 +107,7 @@ protocol_version = 47
 - `port`：目标端口
 - `protocol_version`：Minecraft 协议版本号（握手字段）
 
-## 2.9 `scanner`（必填小节）
+### 2.9 `scanner`（必填小节）
 
 ```toml
 [scanner]
@@ -121,7 +121,7 @@ enabled = true
   - 填了会校验名称合法性，不合法会直接 `panic`
   - 名称使用策略枚举名（如 `Slash0`、`Slash16a`、`Slash24b` 等）
 
-## 2.10 `rescan` ~ `rescan5`（可选小节，最多 5 组）
+### 2.10 `rescan` ~ `rescan5`（可选小节，最多 5 组）
 
 每组结构一致，可用于配置不同节奏/过滤条件的重扫通道。
 
@@ -142,7 +142,7 @@ enabled = true
 - 整个 `rescanX` 小节若完全省略，会走结构体默认值（通常相当于禁用）
 - 若小节存在但未写 `last_ping_ago_max_secs`，反序列化默认值为 2 小时
 
-## 2.11 `snipe`（可选）
+### 2.11 `snipe`（可选）
 
 - `enabled`：是否启用“玩家上下线狙击通知”
 - `webhook_url`：Discord webhook 地址
@@ -154,13 +154,13 @@ enabled = true
 - 通过与上次缓存样本对比，判断“加入/离开”
 - 满足条件时异步发 webhook 消息
 
-## 2.12 `fingerprinting`（可选）
+### 2.12 `fingerprinting`（可选）
 
 - `enabled: bool`
 - 开启后会主动发送特定请求以触发服务端错误响应，用于协议实现指纹识别
 - 代码注释提示：可能在服务端控制台产生错误输出
 
-## 2.13 `debug`（可选）
+### 2.13 `debug`（可选）
 
 - `exit_on_done: bool`：完成一轮后立即退出（调试用）
 - `only_scan_addr: Option<SocketAddrV4>`：只扫描一个地址；并禁用其他策略分支与排除列表
@@ -176,7 +176,7 @@ enabled = true
 1. **控制台直出（`println!/eprintln!`）**
 2. **`tracing` 结构化日志（`info!/warn!/error!/debug!/trace!`）**
 
-## 3.1 控制台直出（stdout/stderr）
+### 3.1 控制台直出（stdout/stderr）
 
 这是你最容易看到的运行信息，典型包括：
 
@@ -191,7 +191,7 @@ enabled = true
 - 与 `RUST_LOG` 无关，默认就会输出
 - 部分输出含 ANSI 颜色（见 `src/terminal_colors.rs`）
 
-## 3.2 tracing 日志初始化机制
+### 3.2 tracing 日志初始化机制
 
 `init_tracing` 在 `src/tracing.rs`，核心行为：
 
@@ -206,7 +206,7 @@ enabled = true
 - 不配置 `logging_dir`：tracing 事件不会写文件
 - 配置 `logging_dir`：tracing 事件会按 `RUST_LOG` + `DEBUG` 上限共同过滤后写入文件
 
-## 3.3 级别含义（结合本项目）
+### 3.3 级别含义（结合本项目）
 
 - `error`：明确错误（如后台维护任务异常）
 - `warn`：可恢复异常/可疑状态（如模拟丢包、异常协议情况）
