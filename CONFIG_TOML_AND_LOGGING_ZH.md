@@ -73,7 +73,7 @@
 实现细节（区间模式）：
 
 - 代码里端口选择基于种子做取模（`src/scanner/mod.rs`）
-- 实际挑选公式是 `(seed % (max - min)) + min`，即范围 `[min, max)`（上界不参与随机挑选）
+- 实际挑选公式是 `(seed % (max - min)) + min`，可命中区间是 `min..=max-1`（也就是 `[min, max)`）
 - 因此配置时应保证 `max > min`
 
 ### 2.5 `scan_duration_secs`（可选，默认 300）
@@ -304,3 +304,79 @@ simulate_tx_loss = 0.0
 2. 运行前设置 `RUST_LOG`（例如模块级 `info/debug`）
 
 这样能把 `tracing` 事件写入滚动日志文件，同时保留程序本身的控制台进度输出。
+
+---
+
+## 8. 扫描策略到底怎么跑？如何尽量覆盖 exclude 之外全部 IP
+
+### 8.1 调度顺序（先理解这一点）
+
+主循环会在“策略类别”之间轮换：
+
+1. `Normal`（常规扫描，来自 `scanner.strategies` / 内置策略）
+2. `Rescan`（`rescan`~`rescan5`）
+3. `Fingerprint`（`fingerprinting`）
+
+只有配置里 `enabled = true` 的类别才会进入轮换。
+
+### 8.2 Normal 类别内部如何选策略
+
+`StrategyPicker` 每轮会这样选：
+
+- 10% 概率随机挑一个策略
+- 90% 按历史分数选当前“最好”的策略
+- 如果你在 `[scanner].strategies` 显式限制了策略列表，就只会在该列表里选
+
+所以如果你允许多个策略，实际覆盖会偏向“历史效果更好”的策略，不是平均扫全世界。
+
+### 8.3 各策略覆盖面（核心结论）
+
+- `Slash0`：扫描 **全 IPv4（0.0.0.0~255.255.255.255）**，但只扫端口 `25565`
+- `Slash16* / Slash24* / Slash32*`：基于数据库里历史活跃服务器做扩展，只覆盖“已知热点”
+- `Rescan*`：只重扫数据库已有服务器，不是全网发现
+- `Fingerprint`：当前仓库里 `active fingerprinting` 已移除（函数是 `unimplemented!`），不适合用于“全覆盖”
+
+### 8.4 exclude 何时生效
+
+每一轮拿到 `ranges` 后，都会统一执行：
+
+- `ranges.apply_exclude(&exclude_ranges)`
+
+即：**先由策略生成目标，再减去 `exclude.conf`**。  
+因此你要“覆盖 exclude 之外全部 IP”，关键是先选能生成“全 IP”的策略，再让 exclude 扣掉不想扫的网段。
+
+### 8.5 想尽量覆盖 exclude 之外全部 IP，推荐配置
+
+目标如果是“全 IPv4 地址发现（默认 MC 端口）”，最稳妥做法是只保留 `Slash0`：
+
+```toml
+[scanner]
+enabled = true
+strategies = ["Slash0"]
+
+[rescan]
+enabled = false
+[rescan2]
+enabled = false
+[rescan3]
+enabled = false
+[rescan4]
+enabled = false
+[rescan5]
+enabled = false
+
+[fingerprinting]
+enabled = false
+```
+
+这会让每轮都执行全 IPv4 的 `25565` 扫描，再统一扣除 `exclude.conf`。
+
+### 8.6 必须知道的边界
+
+1. 这里的“全覆盖”是 **IP 全覆盖 + 指定端口覆盖**，不是“所有端口全覆盖”。  
+   当前内置里只有 `Slash0` 能做全 IPv4，但它端口固定在 `25565`（并不会使用 `[target].port`）。
+
+2. 如果你打开多个策略，覆盖面会受策略选择器影响，不保证每轮都扫到全 IP。
+
+3. 速率、时长、丢包会影响“本轮是否完整跑完”。  
+   即使是 `Slash0`，也要保证 `rate`、`scan_duration_secs` 与网络能力匹配。

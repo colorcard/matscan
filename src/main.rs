@@ -316,8 +316,9 @@ async fn perform_scan(
         count_before_exclude - target_count
     );
     if target_count == 0 {
-        println!("No targets to scan, skipping this round");
-        info!("No targets to scan, skipping this round");
+        const NO_TARGETS_MSG: &str = "No targets to scan, skipping this round";
+        println!("{NO_TARGETS_MSG}");
+        info!("{NO_TARGETS_MSG}");
         return;
     }
 
