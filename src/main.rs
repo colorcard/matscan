@@ -315,6 +315,11 @@ async fn perform_scan(
         "excluded {} targets from this scan",
         count_before_exclude - target_count
     );
+    if target_count == 0 {
+        println!("No targets to scan, skipping this round");
+        info!("No targets to scan, skipping this round");
+        return;
+    }
 
     // this just spews out syn packets so it doesn't need to know what protocol
     // we're using
