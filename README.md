@@ -1,4 +1,4 @@
-# matscan
+# matscan(fork)
 
 silly minecraft server scanner
 
