@@ -89,18 +89,30 @@
 - 默认：`60 秒`
 - 含义：接收侧连接状态保留时长；超过后会清理旧连接
 
-### 2.7 `logging_dir`（可选）
+### 2.7 `save_favicon`（可选，默认 true）
+
+- 类型：`bool`
+- 默认：`true`
+- 含义：是否把服务器返回的图标（`favicon`）写入数据库
+- 设为 `false` 时：
+  - 不会写入 `favicons` 表
+  - `servers.favicon_hash` 也不会更新（会是 `NULL`）
+  - 仍然会正常解析其他字段（MOTD、版本、在线人数、指纹等）
+
+> 如果你“不需要保存服务器 icon”，直接设置：`save_favicon = false`
+
+### 2.8 `logging_dir`（可选）
 
 - 类型：`Option<PathBuf>`
 - 含义：设置后启用文件日志（按天滚动），目录下写入 `matscan.log`
 - 不设置时：不会创建 tracing 文件日志层
 
-### 2.8 `target`（必填小节）
+### 2.9 `target`（必填小节）
 
 ```toml
 [target]
 addr = "matscan"
-port = 1337
+port = 25565
 protocol_version = 47
 ```
 
@@ -108,7 +120,7 @@ protocol_version = 47
 - `port`：目标端口
 - `protocol_version`：Minecraft 协议版本号（握手字段）
 
-### 2.9 `scanner`（必填小节）
+### 2.10 `scanner`（必填小节）
 
 ```toml
 [scanner]
@@ -122,7 +134,7 @@ enabled = true
   - 填了会校验名称合法性，不合法会直接 `panic`
   - 名称使用策略枚举名（如 `Slash0`、`Slash16a`、`Slash24b` 等）
 
-### 2.10 `rescan` ~ `rescan5`（可选小节，最多 5 组）
+### 2.11 `rescan` ~ `rescan5`（可选小节，最多 5 组）
 
 每组结构一致，可用于配置不同节奏/过滤条件的重扫通道。
 
@@ -144,7 +156,7 @@ enabled = true
 - 整个 `rescanX` 小节若完全省略，会走结构体默认值（通常相当于禁用）
 - 若小节存在但未写 `last_ping_ago_max_secs`，反序列化默认值为 2 小时
 
-### 2.11 `snipe`（可选）
+### 2.12 `snipe`（可选）
 
 - `enabled`：是否启用“玩家上下线狙击通知”
 - `webhook_url`：Discord webhook 地址
@@ -156,13 +168,13 @@ enabled = true
 - 通过与上次缓存样本对比，判断“加入/离开”
 - 满足条件时异步发 webhook 消息
 
-### 2.12 `fingerprinting`（可选）
+### 2.13 `fingerprinting`（可选）
 
 - `enabled: bool`
 - 开启后会主动发送特定请求以触发服务端错误响应，用于协议实现指纹识别
 - 代码注释提示：可能在服务端控制台产生错误输出
 
-### 2.13 `debug`（可选）
+### 2.14 `debug`（可选）
 
 - `exit_on_done: bool`：完成一轮后立即退出（调试用）
 - `only_scan_addr: Option<SocketAddrV4>`：只扫描一个地址；并禁用其他策略分支与排除列表
@@ -238,11 +250,12 @@ enabled = true
 
 ```toml
 postgres_uri = "postgres://matscan:replace-me@localhost/matscan"
-rate = 100_000
+rate = 60_000
 sleep_secs = 10
 source_port = { min = 61000, max = 65535 }
 scan_duration_secs = 300
 ping_timeout_secs = 60
+save_favicon = false
 logging_dir = "./logs"
 
 [target]
@@ -252,16 +265,19 @@ protocol_version = 47
 
 [scanner]
 enabled = true
-# strategies = ["Slash0", "Slash24a", "Slash32c"]
+strategies = ["Slash0"]
 
 [rescan]
-enabled = true
-rescan_every_secs = 3600
-last_ping_ago_max_secs = 7200
-limit = 100000
-sort = "oldest"
-filter_sql = "online_players > 0"
-padded = false
+enabled = false
+
+[rescan2]
+enabled = false
+[rescan3]
+enabled = false
+[rescan4]
+enabled = false
+[rescan5]
+enabled = false
 
 [snipe]
 enabled = false
@@ -374,9 +390,68 @@ enabled = false
 ### 8.6 必须知道的边界
 
 1. 这里的“全覆盖”是 **IP 全覆盖 + 指定端口覆盖**，不是“所有端口全覆盖”。  
-   当前内置里只有 `Slash0` 能做全 IPv4，但它端口固定在 `25565`（并不会使用 `[target].port`）。
+   当前内置里只有 `Slash0` 能做全 IPv4，但它端口固定在 `25565` （并不会使用 `[target].port`）。
 
 2. 如果你打开多个策略，覆盖面会受策略选择器影响，不保证每轮都扫到全 IP。
 
 3. 速率、时长、丢包会影响“本轮是否完整跑完”。  
    即使是 `Slash0`，也要保证 `rate`、`scan_duration_secs` 与网络能力匹配。
+
+---
+
+## 9. 面向“长期稳定 + 尽量全面”的实战配置建议（含不保存 icon）
+
+你给的目标是：
+
+1. 长期稳定跑
+2. 尽量全面覆盖（exclude 之外）
+3. 不保存服务器 icon
+
+建议从下面这份起步（在你提供的模板基础上调整）：
+
+```toml
+postgres_uri = "postgres://postgres@localhost/matscan"
+
+# 先从保守值起步，稳定后再逐步提高
+rate = 60_000
+sleep_secs = 10
+scan_duration_secs = 300
+ping_timeout_secs = 60
+
+# 多源端口更稳，记得配套防火墙
+source_port = { min = 61000, max = 65535 }
+
+# 你不需要保存 icon
+save_favicon = false
+
+[target]
+addr = "matscan"
+port = 25565
+protocol_version = 47
+
+[scanner]
+enabled = true
+strategies = ["Slash0"]
+
+# 为了“全量发现”优先，先关闭重扫通道，避免轮次被分流
+[rescan]
+enabled = false
+[rescan2]
+enabled = false
+[rescan3]
+enabled = false
+[rescan4]
+enabled = false
+[rescan5]
+enabled = false
+
+[fingerprinting]
+enabled = false
+```
+
+说明：
+
+- `strategies = ["Slash0"]`：保证常规扫描每轮都是全 IPv4（再扣除 `exclude.conf`）
+- 关闭 `rescan*`：避免策略类别轮换导致“发现流量”被重扫分掉
+- `save_favicon = false`：降低存储与写入压力，长期运行更稳
+- `rate` 先保守：比盲目开到 100k 更容易稳定，建议观察几小时后再按网络/机器能力上调

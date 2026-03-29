@@ -36,6 +36,12 @@ pub struct Config {
     #[serde(default)]
     pub ping_timeout_secs: Option<u64>,
 
+    /// Whether favicon data should be stored in the database.
+    ///
+    /// Defaults to true.
+    #[serde(default = "default_true")]
+    pub save_favicon: bool,
+
     pub target: TargetConfig,
 
     pub scanner: ScannerConfig,
@@ -118,6 +124,54 @@ pub struct RescanConfig {
 fn default_last_ping_ago_max_secs() -> u64 {
     // 2 hours
     60 * 60 * 2
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn save_favicon_defaults_to_true() {
+        let config: Config = toml::from_str(
+            r#"
+postgres_uri = 'postgres://postgres@localhost/matscan'
+rate = 1000
+[target]
+addr = "matscan"
+port = 25565
+protocol_version = 47
+[scanner]
+enabled = true
+"#,
+        )
+        .unwrap();
+
+        assert!(config.save_favicon);
+    }
+
+    #[test]
+    fn save_favicon_can_be_disabled() {
+        let config: Config = toml::from_str(
+            r#"
+postgres_uri = 'postgres://postgres@localhost/matscan'
+rate = 1000
+save_favicon = false
+[target]
+addr = "matscan"
+port = 25565
+protocol_version = 47
+[scanner]
+enabled = true
+"#,
+        )
+        .unwrap();
+
+        assert!(!config.save_favicon);
+    }
 }
 
 #[derive(Deserialize, Default, Clone)]

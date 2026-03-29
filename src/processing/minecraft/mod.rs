@@ -101,8 +101,18 @@ impl ProcessableProtocol for protocols::Minecraft {
             maybe_log_sniped(&shared, &config, target, &db, &ping_res);
         }
 
+        let ping_res = maybe_strip_favicon(ping_res, config.save_favicon);
+
         insert_server_to_db(&db, &target, &ping_res).await
     }
+}
+
+fn maybe_strip_favicon(mut ping_res: PingResponse, save_favicon: bool) -> PingResponse {
+    if !save_favicon {
+        ping_res.favicon = None;
+        ping_res.favicon_hash = None;
+    }
+    ping_res
 }
 
 pub fn parse_ping_response_json(d: &[u8]) -> eyre::Result<PingResponse> {

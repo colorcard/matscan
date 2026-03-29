@@ -11,6 +11,11 @@ sleep_secs = 10
 # source_port = { min = 61000, max = 65535 }
 # and run `iptables -A INPUT -p tcp --dport 61000:65535 -j DROP`
 
+# whether to save server icon data (favicon) in the database.
+# set false to reduce DB storage/write pressure while still saving other fields
+# like description, version, player data, and fingerprints.
+save_favicon = true
+
 [target]
 addr = "matscan"
 port = 1337

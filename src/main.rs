@@ -282,6 +282,8 @@ async fn perform_scan(
     start_time: Instant,
     strategy_picker: &mut StrategyPicker,
 ) {
+    const NO_TARGETS_MSG: &str = "No targets to scan, skipping this round";
+
     let count_before_exclude = ranges.count();
     ranges.apply_exclude(&ctx.exclude_ranges);
 
@@ -316,7 +318,6 @@ async fn perform_scan(
         count_before_exclude - target_count
     );
     if target_count == 0 {
-        const NO_TARGETS_MSG: &str = "No targets to scan, skipping this round";
         println!("{NO_TARGETS_MSG}");
         info!("{NO_TARGETS_MSG}");
         return;
